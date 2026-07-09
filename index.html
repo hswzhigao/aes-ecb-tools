@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AES ECB 加解密工具</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; color: #333; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+h1 { margin-bottom: 24px; font-size: 22px; color: #1a1a2e; }
+.container { display: flex; gap: 0; max-width: 900px; width: 100%; background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); overflow: hidden; }
+.panel { flex: 1; padding: 28px; display: flex; flex-direction: column; gap: 14px; }
+.divider { width: 1px; background: #e0e0e0; }
+.panel-title { font-size: 16px; font-weight: 600; color: #1a1a2e; border-bottom: 2px solid #4a90d9; padding-bottom: 8px; }
+label { font-size: 13px; font-weight: 500; color: #555; }
+input, textarea { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: monospace; outline: none; transition: border-color 0.2s; }
+input:focus, textarea:focus { border-color: #4a90d9; }
+textarea { resize: vertical; min-height: 60px; }
+button { padding: 10px 20px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s, opacity 0.2s; }
+.btn-primary { background: #4a90d9; color: #fff; }
+.btn-primary:hover { background: #3a7bc8; }
+.btn-copy { background: #e8e8e8; color: #333; font-size: 13px; padding: 6px 14px; }
+.btn-copy:hover { background: #d8d8d8; }
+.row { display: flex; gap: 8px; align-items: center; }
+.row-between { display: flex; justify-content: space-between; align-items: center; }
+.output-box { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px; font-family: monospace; font-size: 14px; word-break: break-all; min-height: 50px; max-height: 120px; overflow-y: auto; }
+.error { color: #e74c3c; font-size: 13px; }
+.success { color: #27ae60; font-size: 13px; }
+.hint { font-size: 12px; color: #999; }
+.counter-bar { display: flex; gap: 16px; margin-bottom: 16px; max-width: 900px; width: 100%; justify-content: center; }
+.counter-box { background: #fff; border-radius: 8px; padding: 10px 24px; box-shadow: 0 1px 6px rgba(0,0,0,0.06); text-align: center; }
+.counter-label { font-size: 12px; color: #888; margin-bottom: 4px; }
+.counter-value { font-size: 24px; font-weight: 700; color: #4a90d9; }
+</style>
+</head>
+<body>
+<h1>🔐 AES ECB 加解密工具</h1>
+<p class="hint" style="margin-bottom:16px;">与 Java AesEcbUtils 互通 · AES/ECB/PKCS5Padding · Base64</p>
+<div class="counter-bar">
+  <div class="counter-box">
+    <div class="counter-label">加密次数</div>
+    <div class="counter-value" id="encryptCount">0</div>
+  </div>
+  <div class="counter-box">
+    <div class="counter-label">解密次数</div>
+    <div class="counter-value" id="decryptCount">0</div>
+  </div>
+</div>
+<div class="container">
+  <div class="panel">
+    <div class="panel-title">加密</div>
+    <div>
+      <label>enc.key（密钥）</label>
+      <input type="text" id="encKey" placeholder="输入 enc.key" autocomplete="off">
+    </div>
+    <div>
+      <label>明文</label>
+      <textarea id="plainText" placeholder="输入需要加密的值"></textarea>
+    </div>
+    <button class="btn-primary" onclick="doEncrypt()">加密</button>
+    <div class="row-between">
+      <label>密文结果</label>
+      <button class="btn-copy" onclick="copyText('cipherResult')">复制</button>
+    </div>
+    <div class="output-box" id="cipherResult">—</div>
+    <div id="encMsg"></div>
+  </div>
+  <div class="divider"></div>
+  <div class="panel">
+    <div class="panel-title">解密</div>
+    <div>
+      <label>enc.key（密钥）</label>
+      <input type="text" id="decKey" placeholder="输入 enc.key" autocomplete="off">
+    </div>
+    <div>
+      <label>密文（Base64）</label>
+      <textarea id="cipherInput" placeholder="输入加密后的值"></textarea>
+    </div>
+    <button class="btn-primary" onclick="doDecrypt()">解密</button>
+    <div class="row-between">
+      <label>明文结果</label>
+      <button class="btn-copy" onclick="copyText('plainResult')">复制</button>
+    </div>
+    <div class="output-box" id="plainResult">—</div>
+    <div id="decMsg"></div>
+  </div>
+</div>
+<p class="hint" style="margin-top:16px;text-align:center;">所有计算在浏览器本地完成，不发送到服务器</p>
+<script>
+var encCount = 0;
+var decCount = 0;
+
+function loadCounts() {
+  try {
+    encCount = parseInt(localStorage.getItem('aes_encrypt_count') || '0', 10);
+    decCount = parseInt(localStorage.getItem('aes_decrypt_count') || '0', 10);
+  } catch (e) {}
+  updateCounters();
+}
+
+function updateCounters() {
+  document.getElementById('encryptCount').textContent = encCount;
+  document.getElementById('decryptCount').textContent = decCount;
+}
+
+function bumpEncrypt() {
+  encCount++;
+  try { localStorage.setItem('aes_encrypt_count', String(encCount)); } catch (e) {}
+  updateCounters();
+}
+
+function bumpDecrypt() {
+  decCount++;
+  try { localStorage.setItem('aes_decrypt_count', String(decCount)); } catch (e) {}
+  updateCounters();
+}
+
+function doEncrypt() {
+  var key = document.getElementById('encKey').value;
+  var plain = document.getElementById('plainText').value;
+  var msgEl = document.getElementById('encMsg');
+  var resultEl = document.getElementById('cipherResult');
+  msgEl.className = '';
+  msgEl.textContent = '';
+  if (!key) { msgEl.className = 'error'; msgEl.textContent = '请输入 enc.key'; return; }
+  if (!plain) { msgEl.className = 'error'; msgEl.textContent = '请输入明文'; return; }
+  try {
+    var keyWords = CryptoJS.enc.Utf8.parse(key);
+    var encrypted = CryptoJS.AES.encrypt(plain, keyWords, { mode: CryptoJS.mode.ECB, padding: CryptoJS.pad.Pkcs7 });
+    var result = encrypted.toString();
+    resultEl.textContent = result;
+    msgEl.className = 'success';
+    msgEl.textContent = '✅ 加密成功';
+    bumpEncrypt();
+  } catch (e) {
+    resultEl.textContent = '—';
+    msgEl.className = 'error';
+    msgEl.textContent = '❌ 加密失败: ' + e.message;
+  }
+}
+
+function doDecrypt() {
+  var key = document.getElementById('decKey').value;
+  var cipher = document.getElementById('cipherInput').value;
+  var msgEl = document.getElementById('decMsg');
+  var resultEl = document.getElementById('plainResult');
+  msgEl.className = '';
+  msgEl.textContent = '';
+  if (!key) { msgEl.className = 'error'; msgEl.textContent = '请输入 enc.key'; return; }
+  if (!cipher) { msgEl.className = 'error'; msgEl.textContent = '请输入密文'; return; }
+  try {
+    var keyWords = CryptoJS.enc.Utf8.parse(key);
+    var decrypted = CryptoJS.AES.decrypt(cipher, keyWords, { mode: CryptoJS.mode.ECB, padding: CryptoJS.pad.Pkcs7 });
+    var result = decrypted.toString(CryptoJS.enc.Utf8);
+    if (!result) { throw new Error('解密结果为空，请检查 key 或密文是否正确'); }
+    resultEl.textContent = result;
+    msgEl.className = 'success';
+    msgEl.textContent = '✅ 解密成功';
+    bumpDecrypt();
+  } catch (e) {
+    resultEl.textContent = '—';
+    msgEl.className = 'error';
+    msgEl.textContent = '❌ 解密失败: ' + e.message;
+  }
+}
+
+function copyText(elId) {
+  var text = document.getElementById(elId).textContent;
+  if (!text || text === '—') return;
+  navigator.clipboard.writeText(text).then(function() {
+    var orig = event.target.textContent;
+    event.target.textContent = '已复制 ✓';
+    setTimeout(function() { event.target.textContent = orig; }, 1500);
+  });
+}
+
+loadCounts();
+</script>
+</body>
+</html>
